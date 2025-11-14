@@ -1,28 +1,22 @@
 version: 1.0
+executeOn: agent
+agentTags:
+- PCM_Agent
+- Agent t
 stages:
-- buildjobs
-- tester
+- StageOne
 jobs:
-  ant-source:
-    description: ''
-    type: git-cli
-    stage: buildjobs
+  Agent:
+    description: '1234'
+    type: source-checkout
+    stage: StageOne
+    context:
+    - Tune
     timeout: 60
     priority: major
     parameters:
-      scripts:
-      - git clone https://gitlab.com/cmnsservices/cm-ant-standalone-test.git
-  tester:
-    type: custom-container
-    stage: tester
-    timeout: 60
-    priority: major
-    parameters:
-      image:
-        type: CodeMine
-        path: ant:latest
-        resetEntryPoint: false
-        publicImage: false
-        shell: sh
-      scripts:
-      - echo $test
+      branch: main
+    executeOn: agent
+    agentTags:
+    - PCM_Agent
+    - Agent t
