@@ -1,4 +1,5 @@
 version: 1.0
+circleci-project-setup
 stages:
 - buildjobs
 - tester
@@ -26,3 +27,25 @@ jobs:
         shell: sh
       scripts:
       - echo $test
+executeOn: agent
+agentTags:
+- PCM_Agent
+- Agent t
+stages:
+- StageOne
+jobs:
+  Agent:
+    description: '1234'
+    type: source-checkout
+    stage: StageOne
+    context:
+    - Tune
+    timeout: 60
+    priority: major
+    parameters:
+      branch: main
+    executeOn: agent
+    agentTags:
+    - PCM_Agent
+    - Agent t
+main
