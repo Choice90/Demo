@@ -3,7 +3,7 @@ stages:
 - buildjobs
 - tester
 jobs:
-  ant-source:
+  git-cli:
     description: ''
     type: git-cli
     stage: buildjobs
