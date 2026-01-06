@@ -1,4 +1,32 @@
 version: 1.0
+circleci-project-setup
+stages:
+- buildjobs
+- tester
+jobs:
+  git-cli:
+    description: ''
+    type: git-cli
+    stage: buildjobs
+    timeout: 60
+    priority: major
+    parameters:
+      scripts:
+      - git clone https://gitlab.com/cmnsservices/cm-ant-standalone-test.git
+  tester:
+    type: custom-container
+    stage: tester
+    timeout: 60
+    priority: major
+    parameters:
+      image:
+        type: CodeMine
+        path: ant:latest
+        resetEntryPoint: false
+        publicImage: false
+        shell: sh
+      scripts:
+      - echo $test
 executeOn: agent
 agentTags:
 - PCM_Agent
@@ -20,3 +48,4 @@ jobs:
     agentTags:
     - PCM_Agent
     - Agent t
+main
