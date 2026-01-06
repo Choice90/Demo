@@ -1,7 +1,6 @@
 version: 1.0
 circleci-project-setup
 stages:
-
 - buildjobs
 - tester
 jobs:
