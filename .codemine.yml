@@ -1,51 +1,349 @@
+# ============================================================================
+# **IMPORTANT**
+# CodeMine SAMPLE Pipeline - Feature Demonstration
+# It is NOT intended for real use
+# You can use the structure, job names, scripts, images, conditions, and configurations according to your actual project needs.
+# All job names are prefixed with "SAMPLE_" to indicate that they are illustrative examples only.
+# ============================================================================
+# This pipeline demonstrates the following CodeMine CI/CD features:
+#   1. Source Checkout         - Clone repository code using source-checkout type
+#   2. Artifact Transfer       - Pass files/folders between jobs using capture & requiredArtifacts
+#   3. Variable Sharing        - Store variables in .env file and access across jobs
+#   4. Parallel Execution      - Run multiple jobs simultaneously in the same stage
+#   5. Command Execution       - Run shell commands using scripts, beforeScripts, afterScripts
+#   6. Conditional Execution   - Use 'rules' with 'ifCriteria' to run jobs based on conditions
+#
+# Pipeline Flow:
+#   [checkout stage] SourceCheckout -> DisplayFiles -> SetupVariables
+#   [build stage]    BuildApp (receives source code artifacts)
+#   [test stage]     UnitTests & IntegrationTests (run in parallel) -> AggregateResults
+#   [deploy stage]   DeployApp (only executes when branch is 'main' or 'hotfix/*')
+# ============================================================================
 version: 1.0
-circleci-project-setup
+# ----------------------------------------------------------------------------
+# STAGES: Define the execution order of pipeline phases
+# Jobs in the same stage can run in parallel (if no dependencies)
+# Jobs in later stages wait for previous stages to complete
+# ----------------------------------------------------------------------------
 stages:
-- buildjobs
-- tester
+  - checkout    # Stage 1: Get source code and setup environment
+  - build       # Stage 2: Compile/build the application
+  - test        # Stage 3: Run tests and aggregate results
+  - deploy      # Stage 4: Deploy application (only for main branch)
+
+# ============================================================================
+# JOBS: Define individual tasks to be executed in the pipeline
+# ============================================================================
 jobs:
-  git-cli:
-    description: ''
-    type: git-cli
-    stage: buildjobs
-    timeout: 60
-    priority: major
+  # --------------------------------------------------------------------------
+  # Job 1: Source Code Checkout
+  # --------------------------------------------------------------------------
+  # Purpose: Clone the repository source code
+  # Type: source-checkout (built-in job type)
+  # Output: Source code is automatically captured as artifact for dependent jobs
+  # --------------------------------------------------------------------------
+  SourceCheckout:
+    description: Checkout source code from repository
+    stage: checkout
+    type: source-checkout       # Special type for source code checkout
+    timeout: 10                 # Maximum execution time in minutes
     parameters:
+      branch: $CM_BRANCH        # Use CodeMine built-in variable for branch name
+
+  # --------------------------------------------------------------------------
+  # Job 2: Display Checkout Files
+  # --------------------------------------------------------------------------
+  # Purpose: Verify checkout by displaying files and counting items
+  # Demonstrates:
+  #   - 'after' keyword to create job dependency (runs after SourceCheckout)
+  #   - 'requiredArtifacts' to receive artifacts from previous job
+  #   - 'scripts' to execute shell commands
+  # --------------------------------------------------------------------------
+  SAMPLE_DisplayFiles:
+    description: SAMPLE - Display checked out files from source checkout
+    stage: checkout
+    type: custom-container      # Custom container type for running scripts
+    timeout: 5
+    after:
+      - SourceCheckout          # This job waits for SourceCheckout to complete
+    parameters:
+      image:
+        type: CodeMine
+        path: alpine:latest     # Docker image to use for this job
+      requiredArtifacts:
+        - SourceCheckout        # Receive artifacts from SourceCheckout job
       scripts:
-      - git clone https://gitlab.com/cmnsservices/cm-ant-standalone-test.git
-  tester:
+        - echo "=== Listing Checkout Files ==="
+        - ls -la
+        # Count and display number of files and folders
+        - echo "=== File & Folder Count ==="
+        - 'echo "Number of files: $(find . -maxdepth 1 -type f | wc -l)"'
+        - 'echo "Number of folders: $(find . -maxdepth 1 -type d | wc -l)"'
+
+  # --------------------------------------------------------------------------
+  # Job 3: Setup Variables
+  # --------------------------------------------------------------------------
+  # Purpose: Create and store environment variables for use in later jobs
+  # Demonstrates:
+  #   - Writing variables to a .env file
+  #   - 'capture.env' to save .env file and make variables available to all jobs
+  #   - Variables can be accessed in other jobs using $VARIABLE_NAME syntax
+  # --------------------------------------------------------------------------
+  SAMPLE_SetupVariables:
     type: custom-container
-    stage: tester
-    timeout: 60
+    description: SAMPLE - Store variables to be accessed by other jobs
+    stage: checkout
+    timeout: 5
+    after:
+      - SAMPLE_DisplayFiles            # Run after DisplayFiles completes
+    parameters:
+      image:
+        type: CodeMine
+        path: alpine:latest
+      scripts:
+        - echo "Setting up pipeline runtime variables..."
+        # Create config directory for storing env file
+        - mkdir -p workspace/config
+        # Write key-value pairs to .env file (FORMAT: KEY=value)
+        - echo "ENVIRONMENT=production" > workspace/config/pipeline.env
+        - echo "BUILD_NUMBER=42" >> workspace/config/pipeline.env
+        - echo "DEPLOY_TARGET=cloud-server-01" >> workspace/config/pipeline.env
+        - echo "BUILD_DATE=$(date +%Y-%m-%d)" >> workspace/config/pipeline.env
+        # Display the stored variables
+        - echo "=== Variables stored in .env file ==="
+        - cat workspace/config/pipeline.env
+      capture:
+        # Capture env file - variables will be available in subsequent jobs
+        env:
+          path: workspace/config/pipeline.env
+
+  # --------------------------------------------------------------------------
+  # Job 4: Build Application
+  # --------------------------------------------------------------------------
+  # Purpose: Compile/build the application using checked out source code
+  # Demonstrates:
+  #   - 'requiredArtifacts' to receive source code from SourceCheckout
+  #   - 'beforeScripts' to run setup commands before main scripts
+  #   - 'scripts' for main build commands
+  #   - 'afterScripts' to run cleanup commands after main scripts
+  #   - 'capture.artifacts' to save build output for later jobs
+  #   - Accessing variables set by SetupVariables job ($ENVIRONMENT, $BUILD_NUMBER)
+  # Note: This job runs in 'build' stage, automatically waits for checkout stage
+  # --------------------------------------------------------------------------
+  SAMPLE_BuildApp:
+    type: custom-container
+    description: SAMPLE - Build application using checked out source code
+    stage: build
+    timeout: 20
+    parameters:
+      image:
+        type: CodeMine
+        path: alpine:latest
+      requiredArtifacts:
+        - SourceCheckout        # Receive source code from checkout job
+      # beforeScripts: Commands that run BEFORE main scripts (setup/preparation)
+      beforeScripts:
+        - echo "=== Preparing Build Environment ==="
+        # Access variables from SetupVariables job's .env file
+        - 'echo "Using ENVIRONMENT: $ENVIRONMENT"'
+        - 'echo "Using BUILD_NUMBER: ${BUILD_NUMBER}"'
+      # scripts: Main commands for this job (the actual build process)
+      scripts:
+        - echo "=== Building Application ==="
+        - echo "Received artifacts from SourceCheckout:"
+        - ls -la
+        - echo "Compiling source files..."
+        # Create build output directory and files
+        - mkdir -p workspace/build/classes
+        - echo "Build completed at $(date)" > workspace/build/build-info.txt
+        - 'echo "Version: ${BUILD_VERSION}" >> workspace/build/build-info.txt'
+        - echo "=== Build Output ==="
+        - ls -la workspace/build/
+      # afterScripts: Commands that run AFTER main scripts (cleanup/finalization)
+      afterScripts:
+        - echo "=== Build Phase Complete ==="
+      # capture: Define artifacts to pass to dependent jobs
+      capture:
+        artifacts:
+          paths:
+            - workspace/build/**    # Capture all files in build directory
+
+  # --------------------------------------------------------------------------
+  # Job 5: Unit Tests (PARALLEL EXECUTION)
+  # --------------------------------------------------------------------------
+  # Purpose: Run unit tests on the built application
+  # Demonstrates:
+  #   - PARALLEL EXECUTION: This job runs in parallel with IntegrationTests
+  #     because both are in 'test' stage with no 'after' dependency on each other
+  #   - 'requiredArtifacts' to receive build output from BuildApp
+  #   - 'capture.artifacts' to save test results for AggregateResults job
+  # --------------------------------------------------------------------------
+  SAMPLE_UnitTests_PARALLEL_EXECUTION:
+    type: custom-container
+    description: SAMPLE - Run unit tests in parallel with integration tests
+    stage: test
+    timeout: 15
+    parameters:
+      image:
+        type: CodeMine
+        path: alpine:latest
+      requiredArtifacts:
+        - SAMPLE_BuildApp              # Receive build artifacts from BuildApp job
+      scripts:
+        - echo "=== Running Unit Tests ==="
+        - echo "Accessing build artifacts:"
+        - ls -la workspace/build/
+        # Simulate unit test execution
+        - 'echo "Test 1: Main class validation... PASSED"'
+        - 'echo "Test 2: Utils class validation... PASSED"'
+        - 'echo "Test 3: Configuration loading... PASSED"'
+        - 'echo "Unit Tests: 3/3 PASSED"'
+        # Create test results directory and report file
+        - mkdir -p workspace/test-results
+        - echo "unit_tests_passed=3" > workspace/test-results/unit-report.txt
+        - echo "unit_tests_failed=0" >> workspace/test-results/unit-report.txt
+      capture:
+        artifacts:
+          paths:
+            - workspace/test-results/unit-report.txt
+
+  # --------------------------------------------------------------------------
+  # Job 6: Integration Tests (PARALLEL EXECUTION)
+  # --------------------------------------------------------------------------
+  # Purpose: Run integration tests on the built application
+  # Demonstrates:
+  #   - PARALLEL EXECUTION: This job runs in parallel with UnitTests
+  #     because both are in 'test' stage with no 'after' dependency on each other
+  #   - Reading artifact files using 'cat' command
+  # --------------------------------------------------------------------------
+  SAMPLE_IntegrationTests_PARALLEL_EXECUTION:
+    type: custom-container
+    description: SAMPLE - Run integration tests in parallel with unit tests
+    stage: test
+    timeout: 15
+    parameters:
+      image:
+        type: CodeMine
+        path: alpine:latest
+      requiredArtifacts:
+        - SAMPLE_BuildApp              # Receive build artifacts from BuildApp job
+      scripts:
+        - echo "=== Running Integration Tests ==="
+        - echo "Accessing build artifacts:"
+        - ls -la workspace/build/
+        # Read and display build info from artifact
+        - cat workspace/build/build-info.txt
+        # Simulate integration test execution
+        - 'echo "Integration Test 1: API connectivity... PASSED"'
+        - 'echo "Integration Test 2: Database connection... PASSED"'
+        - 'echo "Integration Tests: 2/2 PASSED"'
+        # Create test results directory and report file
+        - mkdir -p workspace/test-results
+        - echo "integration_tests_passed=2" > workspace/test-results/integration-report.txt
+        - echo "integration_tests_failed=0" >> workspace/test-results/integration-report.txt
+      capture:
+        artifacts:
+          paths:
+            - workspace/test-results/integration-report.txt
+
+  # --------------------------------------------------------------------------
+  # Job 7: Aggregate Test Results
+  # --------------------------------------------------------------------------
+  # Purpose: Collect and combine results from all parallel test jobs
+  # Demonstrates:
+  #   - 'after' with multiple jobs: Waits for BOTH UnitTests AND IntegrationTests
+  #   - 'requiredArtifacts' with multiple jobs: Receives artifacts from both test jobs
+  #   - This job only starts after ALL parallel test jobs complete
+  #   - 'priority: major' to indicate this is a critical job
+  # --------------------------------------------------------------------------
+  SAMPLE_AggregateResults:
+    type: custom-container
+    description: SAMPLE - Collect and aggregate all test results
+    stage: test
+    after:
+      - SAMPLE_UnitTests_PARALLEL_EXECUTION               # Wait for UnitTests to complete
+      - SAMPLE_IntegrationTests_PARALLEL_EXECUTION        # Wait for IntegrationTests to complete
+    timeout: 5
     priority: major
     parameters:
       image:
         type: CodeMine
-        path: ant:latest
-        resetEntryPoint: false
-        publicImage: false
-        shell: sh
+        path: alpine:latest
+      requiredArtifacts:
+        - SAMPLE_UnitTests_PARALLEL_EXECUTION             # Receive test results from UnitTests
+        - SAMPLE_IntegrationTests_PARALLEL_EXECUTION      # Receive test results from IntegrationTests
       scripts:
-      - echo $test
-executeOn: agent
-agentTags:
-- PCM_Agent
-- Agent t
-stages:
-- StageOne
-jobs:
-  Agent:
-    description: '1234'
-    type: source-checkout
-    stage: StageOne
-    context:
-    - Tune
-    timeout: 60
+        - echo "=== Aggregating Test Results ==="
+        - echo "--- Unit Test Report ---"
+        - cat workspace/test-results/unit-report.txt
+        - echo "--- Integration Test Report ---"
+        - cat workspace/test-results/integration-report.txt
+        - echo "=== All Tests Passed Successfully ==="
+
+  # --------------------------------------------------------------------------
+  # Job 8: Deploy Application (CONDITIONAL EXECUTION)
+  # --------------------------------------------------------------------------
+  # Purpose: Deploy the application to production environment
+  # Demonstrates:
+  #   - 'rules' keyword with 'ifCriteria' for conditional job execution
+  #   - Multiple rules: Job runs if ANY rule matches (OR logic)
+  #   - Supported operators in ifCriteria:
+  #       == : Equal comparison (e.g., $CM_BRANCH == 'main')
+  #       != : Not equal comparison
+  #       =~ : Regex pattern match (e.g., $CM_BRANCH =~ /hotfix\/.*/)
+  #   - This job runs ONLY when:
+  #       1. Branch is exactly 'main', OR
+  #       2. Branch matches pattern 'hotfix.*' (e.g., hotfix/v1.0.1)
+  #   - Job is SKIPPED for all other branches
+  # --------------------------------------------------------------------------
+  SAMPLE_DeployApp_CONDITIONAL_EXECUTION:
+    type: custom-container
+    description: "SAMPLE - Deploy application to production - main branch only"
+    stage: deploy
+    timeout: 15
     priority: major
+    # Condition: Only execute this job when branch is 'main'
+    rules:
+      - ifCriteria: $CM_BRANCH == "main"
+      - ifCriteria: $CM_BRANCH =~ /hotfix.*/
     parameters:
-      branch: main
-    executeOn: agent
-    agentTags:
-    - PCM_Agent
-    - Agent t
-main
+      image:
+        type: CodeMine
+        path: alpine:latest
+      requiredArtifacts:
+        - SAMPLE_BuildApp              # Receive build artifacts for deployment
+      beforeScripts:
+        - echo "=== Pre-Deployment Checks ==="
+        - 'echo "Branch: $CM_BRANCH"'
+        - 'echo "Target Environment: $ENVIRONMENT"'
+      scripts:
+        - echo "=== Starting Deployment ==="
+        - echo "Deploying build artifacts:"
+        - ls -la workspace/build/
+        - cat workspace/build/build-info.txt
+        # Simulate deployment steps
+        - echo "Connecting to deployment target..."
+        - echo "Uploading application files..."
+        - echo "Restarting services..."
+        - echo "Verifying deployment..."
+        - echo "=== Deployment Successful ==="
+      afterScripts:
+        - echo "=== Deployment Complete ==="
+
+# ============================================================================
+# END OF PIPELINE
+# ============================================================================
+# Summary of demonstrated features:
+#   - source-checkout type for repository cloning
+#   - custom-container type for running shell commands
+#   - stages for organizing pipeline phases
+#   - after for job dependencies
+#   - requiredArtifacts for receiving artifacts from other jobs
+#   - capture.artifacts for saving files to pass to other jobs
+#   - capture.env for sharing variables across jobs
+#   - beforeScripts, scripts, afterScripts for command execution
+#   - Parallel execution (UnitTests & IntegrationTests run simultaneously)
+#   - Variable access using $VARIABLE_NAME syntax
+#   - Conditional execution using 'rules' with 'ifCriteria' (DeployApp runs
+#     only on main branch or hotfix/* branches)
+# ============================================================================
